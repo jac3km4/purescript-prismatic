@@ -1,0 +1,19 @@
+{
+  "name": "purescript-spaz",
+  "set": "psc-0.12.1",
+  "source": "https://github.com/purescript/package-sets.git",
+  "depends": [
+    "console",
+    "effect",
+    "prelude",
+    "psci-support",
+    "react",
+    "react-dom",
+    "web-html",
+    "profunctor-lenses",
+    "arrays",
+    "aff",
+    "refs",
+    "freet"
+  ]
+}
