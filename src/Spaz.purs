@@ -162,15 +162,7 @@ wired spec cmp el =
         , state: {state: Nothing}
         , componentDidMount: do
             {effect} <- React.getProps this
-            effect $ do
-              subId <- subscribe $ \o n ->
-                if cmp o n
-                then void $ makeAff \cb -> do
-                  void $ React.writeStateWithCallback this {state: Just n} (cb $ Right n)
-                  pure nonCanceler
-                else pure unit
-              liftEffect $ Ref.write (unsubscribe subId) unsubscribeRef
-              spec.componentDidMount
+            effect $ setupSubscription unsubscribeRef this *> spec.componentDidMount
         , shouldComponentUpdate: \{state} _ ->
             pure $ spec.shouldComponentUpdate state
         , componentDidUpdate: \{effect, state} _ _ ->
