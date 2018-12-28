@@ -183,31 +183,30 @@ wiredL lens spec shouldUpdate el = React.component spec.displayName constructor
 
 -- | Create a `Component` from a `Spec` and an `Element`.
 -- | This function subscribes the component to all state updates.
+-- | It's the same as `wiredL`, but defaults to the identity lens.
+wired
+  :: ∀ st act
+   . Spec st act               -- | Component spec
+  -> (st -> st -> Boolean)     -- | Comparison function used to determine changes
+  -> (st -> Element st act)    -- | Element to be rendered
+  -> Component st act
+wired spec shouldUpdate el = wiredL identity spec shouldUpdate el
+
+-- | Create a `Component` from a `Spec` and an `Element`.
+-- | This function subscribes the component to all state updates.
 -- | It's the same as `wiredL`, but depends on an `Eq` instance to do equality checks.
 wiredLEq
   :: ∀ st stt act
-   . (Eq st)
+   . (Eq stt)
   => Lens' st stt               -- | Lens for the part of state to use  
   -> Spec st act                -- | Component spec
-  -> (stt -> stt -> Boolean)    -- | Comparison function used to determine changes
-  -> (stt -> Element st act)    -- | Element to be rendered
+  -> (stt -> Element st act)     -- | Element to be rendered
   -> Component st act
-wiredLEq lens spec shouldUpdate el = wiredL lens spec shouldUpdate el
+wiredLEq lens spec el = wiredL lens spec (/=) el
 
 -- | Create a `Component` from a `Spec` and an `Element`.
 -- | This function subscribes the component to all state updates.
--- | It's the same as `wired`, but defaulted to the identity lens.
-wired
-  :: ∀ st act
-   . (Eq st)
-  => Spec st act                -- | Component spec
-  -> (st -> Element st act)     -- | Element to be rendered
-  -> Component st act
-wired spec el = wiredL identity spec (/=) el
-
--- | Create a `Component` from a `Spec` and an `Element`.
--- | This function subscribes the component to all state updates.
--- | It's the same as `wired`, but defaulted to the identity lens and depends on an `Eq` instance to do equality checks.
+-- | It's the same as `wiredL`, but defaults to the identity lens and depends on an `Eq` instance to do equality checks.
 wiredEq
   :: ∀ st act
    . (Eq st)
