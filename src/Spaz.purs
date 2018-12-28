@@ -11,7 +11,6 @@ module Spaz
   , dispatch
   , defaultSpec
   , zoom
-  , state
   , stateL
   , foreach
   , foreachF
@@ -20,7 +19,8 @@ module Spaz
   , element
   , wired
   , wiredEq
-  , static
+  , wiredL
+  , wiredLEq
   , stateless
   , interpretEff
   ) where
@@ -139,32 +139,31 @@ defaultSpec =
 -- | This function subscribes the component to all state updates.
 -- | Each update will trigger an equality check and possibly a rerender.
 -- | You should avoid nesting those components because each of them has a separate subscription.
-wired
-  :: ∀ st act
-   . Spec st act              -- | Component spec
-  -> (st -> st -> Boolean)    -- | Comparison function used to determine changes
-  -> Element st act           -- | Element to be rendered
+wiredL
+  :: ∀ st stt act
+   . Lens' st stt               -- | Lens for the part of state to use
+  -> Spec st act                -- | Component spec
+  -> (stt -> stt -> Boolean)    -- | Comparison function used to determine changes
+  -> (stt -> Element st act)    -- | Element to be rendered
   -> Component st act
-wired spec cmp el =
-  React.componentWithDerivedState spec.displayName initialState constructor
+wiredL lens spec shouldUpdate el = React.component spec.displayName constructor
   where
-    initialState props {state} = case state of
-      Just v -> {state}
-      Nothing -> {state: Just props.state}
     constructor this = do
       unsubscribeRef <- newSubscriptionRef
+      initial <- React.getProps this
+      let initialState = initial.state
       pure $
         { render: do
             {effect} <- React.getProps this
             {state} <- React.getState this
-            let state' = unsafePartial $ fromJust state
-            pure $ el effect state'
-        , state: {state: Nothing}
+            pure $ el (view lens state) effect state
+        , state: {state: initialState}
         , componentDidMount: do
             {effect} <- React.getProps this
             effect $ setupSubscription unsubscribeRef this *> spec.componentDidMount
-        , shouldComponentUpdate: \{state} _ ->
-            pure $ spec.shouldComponentUpdate state
+        , shouldComponentUpdate: \{state} _ -> do
+            current <- React.getState this
+            pure $ (spec.shouldComponentUpdate state && shouldUpdate (view lens current.state) (view lens state)) 
         , componentDidUpdate: \{effect, state} _ _ ->
             effect $ spec.componentDidUpdate state
         , componentWillUnmount: do
@@ -175,61 +174,55 @@ wired spec cmp el =
     newSubscriptionRef = Ref.new $ pure unit
     setupSubscription ref this = do
       subId <- subscribe $ \o n ->
-        if cmp o n
+        if shouldUpdate (view lens o) (view lens n)
         then void $ makeAff \cb -> do
-          void $ React.writeStateWithCallback this {state: Just n} (cb $ Right n)
+          void $ React.writeStateWithCallback this {state: n} (cb $ Right n)
           pure nonCanceler
         else pure unit
       liftEffect $ Ref.write (unsubscribe subId) ref
 
 -- | Create a `Component` from a `Spec` and an `Element`.
 -- | This function subscribes the component to all state updates.
--- | It's the same as `wired`, but depends on an `Eq` instance to do equality checks.
+-- | It's the same as `wiredL`, but depends on an `Eq` instance to do equality checks.
+wiredLEq
+  :: ∀ st stt act
+   . (Eq st)
+  => Lens' st stt               -- | Lens for the part of state to use  
+  -> Spec st act                -- | Component spec
+  -> (stt -> stt -> Boolean)    -- | Comparison function used to determine changes
+  -> (stt -> Element st act)    -- | Element to be rendered
+  -> Component st act
+wiredLEq lens spec shouldUpdate el = wiredL lens spec shouldUpdate el
+
+-- | Create a `Component` from a `Spec` and an `Element`.
+-- | This function subscribes the component to all state updates.
+-- | It's the same as `wired`, but defaulted to the identity lens.
+wired
+  :: ∀ st act
+   . (Eq st)
+  => Spec st act                -- | Component spec
+  -> (st -> Element st act)     -- | Element to be rendered
+  -> Component st act
+wired spec el = wiredL identity spec (/=) el
+
+-- | Create a `Component` from a `Spec` and an `Element`.
+-- | This function subscribes the component to all state updates.
+-- | It's the same as `wired`, but defaulted to the identity lens and depends on an `Eq` instance to do equality checks.
 wiredEq
   :: ∀ st act
    . (Eq st)
-  => Spec st act        -- | Component spec
-  -> Element st act     -- | Element to be rendered
+  => Spec st act                -- | Component spec
+  -> (st -> Element st act)     -- | Element to be rendered
   -> Component st act
-wiredEq spec el = wired spec (/=) el
+wiredEq spec el = wiredL identity spec (/=) el
 
--- | Static component that doesn't subscribe to state updates.
--- | It's children may still subscribe.
-static
-  :: ∀ st act
-   . Spec st act        -- | Component spec
-  -> Element st act     -- | Element to be rendered
-  -> Component st act
-static spec el =
-  React.component spec.displayName constructor
-  where
-    constructor this = pure $
-      { render: do
-          {effect, state} <- React.getProps this
-          pure $ el effect state
-      , componentDidMount: do
-          {effect} <- React.getProps this
-          effect spec.componentDidMount
-      , shouldComponentUpdate: \{state} _ ->
-          pure $ spec.shouldComponentUpdate state
-      , componentDidUpdate: \{effect, state} _ _ ->
-          effect $ spec.componentDidUpdate state
-      , componentWillUnmount: do
-          {effect} <- React.getProps this
-          effect $ spec.componentWillUnmount
-      }
-
--- | Shortcut for creating React stateless components.
+-- | Shortcut for creating React stateless components that accept any state passed to it as props.
 stateless :: ∀ st act. (st -> Element st act) -> Component st act
 stateless render = statelessComponent $ \{effect, state} -> render state effect state
 
 -- | Create a `Element` from a `Component`.
 element :: ∀ st act. Component st act -> Element st act
 element class_ effect state = React.createLeafElement class_ {effect, state}
-
--- | Reify the current `Component` state.
-state :: ∀ st act. (st -> Element st act) -> Element st act
-state f effect st = (f st) effect st
 
 -- | Embed a `Element` with a state of type `stt` into a `Element`
 -- | with a state of type `st`.

@@ -6,7 +6,7 @@ import Web.DOM.NonElementParentNode (getElementById)
 import Web.HTML (window)
 import Web.HTML.HTMLDocument (toNonElementParentNode)
 import Web.HTML.Window (document)
-import Spaz (ActionHandler, Component, Eff, Element, SubId(..), element, interpretEff)
+import Spaz (ActionHandler, Eff, Element, SubId(..), interpretEff)
 import Effect (Effect)
 import Data.Map as Map
 import Data.Maybe (fromJust)
@@ -29,7 +29,7 @@ mkElement element props children effect st =
 -- | Attach `Element` to the DOM element with the specified id and mount it.
 mount
   :: ∀ st act. String     -- | Element id
-  -> Component st act     -- | Element
+  -> Element st act     -- | Element
   -> ActionHandler st act -- | Action handler
   -> st                   -- | Initial state
   -> Effect Unit
@@ -43,7 +43,7 @@ mount elemId cmp handler st = do
       model <- Ref.new {root: st, subscriptions: Map.empty, subId: SubId 0 }
       let root = { model, handler }
           eff = \effect -> launchAff_ $ interpretEff root effect
-      pure $ element cmp eff st
+      pure $ cmp eff st
     getHandle = do
       win <- window
       doc <- document win
