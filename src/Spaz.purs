@@ -54,7 +54,6 @@ type Spec st act =
   , componentDidMount :: Eff st act Unit
   , componentWillUnmount :: Eff st act Unit
   , componentDidUpdate :: st -> Eff st act Unit
-  , shouldComponentUpdate :: st -> Boolean
   }
 
 newtype SubId = SubId Int
@@ -132,7 +131,6 @@ defaultSpec =
   , componentDidMount: pure unit
   , componentWillUnmount: pure unit
   , componentDidUpdate: \_ -> pure unit
-  , shouldComponentUpdate: \_ -> true
   }
 
 -- | Create a `Component` from a `Spec`, a `shouldComponentUpdate` function and an `Element`.
@@ -161,9 +159,9 @@ wiredL lens spec shouldUpdate el = React.component spec.displayName constructor
         , componentDidMount: do
             {effect} <- React.getProps this
             effect $ setupSubscription unsubscribeRef this *> spec.componentDidMount
-        , shouldComponentUpdate: \{state} _ -> do
+        , shouldComponentUpdate: \_ {state} -> do
             current <- React.getState this
-            pure $ (spec.shouldComponentUpdate state && shouldUpdate (view lens current.state) (view lens state)) 
+            pure $ shouldUpdate (view lens current.state) (view lens state)
         , componentDidUpdate: \{effect, state} _ _ ->
             effect $ spec.componentDidUpdate state
         , componentWillUnmount: do
