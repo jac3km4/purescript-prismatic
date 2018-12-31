@@ -5,7 +5,7 @@ import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Prelude (Unit, const, show, ($), (+), (<<<))
-import Spaz (ActionHandler, Component, Element, defaultSpec, dispatch, element, foreachZ, modify, stateless, wiredEq, zoom)
+import Spaz (ActionHandler, Component, Element, defaultSpec, dispatch, element, foreachZ, modify, state, wiredEq, zoom)
 import Spaz.DOM (div, div', text)
 import Spaz.HTML (mount)
 import Spaz.Props (onClick)
@@ -23,7 +23,7 @@ _items = lens (_.items) (_ { items = _ })
 page :: Element State Action
 page = div' [ div [onClick $ \_ -> dispatch ResetCounter] [text "hehe"]
             , zoom _number $ element stuff
-            , foreachZ _items $ element $ stateless $ text <<< show
+            , foreachZ _items $ state $ text <<< show
             ]
 
 stuff :: ∀ act. Component Int act
@@ -37,4 +37,3 @@ main = mount "main" page handler {number:0, items: [2]}
 
 handler :: ActionHandler State Action
 handler ResetCounter = modify (const {number: 0, items: []})
-

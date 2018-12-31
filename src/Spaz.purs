@@ -11,6 +11,7 @@ module Spaz
   , dispatch
   , defaultSpec
   , zoom
+  , state
   , stateL
   , foreach
   , foreachF
@@ -214,8 +215,8 @@ wiredEq
 wiredEq spec el = wiredL identity spec (/=) el
 
 -- | Shortcut for creating React stateless components that accept any state passed to it as props.
-stateless :: ∀ st act. (st -> Element st act) -> Component st act
-stateless render = statelessComponent $ \{effect, state} -> render state effect state
+stateless :: ∀ st act. Element st act -> Component st act
+stateless render = statelessComponent $ \{effect, state} -> render effect state
 
 -- | Create a `Element` from a `Component`.
 element :: ∀ st act. Component st act -> Element st act
@@ -229,7 +230,11 @@ zoom
   -> Element st act
 zoom lns cmp effect st = cmp (\e -> effect $ zoomEff (cloneLens lns) e) (st ^. cloneLens lns)
 
--- | Reify `Component` substate specified by a lens.
+-- | Reify the current `Element` state.
+state :: ∀ st act. (st -> Element st act) -> Element st act
+state f effect st = (f st) effect st
+
+-- | Reify `Element` substate specified by a lens.
 stateL
   :: ∀ st stt act
    . ALens' st stt
@@ -237,7 +242,7 @@ stateL
   -> Element st act
 stateL lns f effect st = (f (st ^. cloneLens lns)) effect st
 
--- | Modify `Component` substate specified by a `Lens`.
+-- | Modify `Element` substate specified by a `Lens`.
 modifyL
   :: ∀ st stt act
    . ALens' st stt
