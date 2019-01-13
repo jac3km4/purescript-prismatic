@@ -29,7 +29,7 @@ import Prelude
 
 import Control.Monad.Free.Trans (FreeT, interpret, liftFreeT, runFreeT)
 import Data.Array (index, unsafeIndex, updateAt)
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Lens (Lens', Prism', lens, matching, over, prism', review, view, (^.))
@@ -133,7 +133,7 @@ modifyL :: ∀ st stt act. Lens' st stt -> (stt -> stt) -> Eff st act Unit
 modifyL lns = modify <<< over lns
 
 noAction :: ∀ st act. PerformAction st act
-noAction = const $ pure unit
+noAction _ = pure unit
 
 defaultSpec :: ∀ st act. Render st act -> PerformAction st act -> Spec st act
 defaultSpec render performAction =
@@ -239,22 +239,16 @@ split
    . Prism' state1 state2
   -> Element state2 action
   -> Element state1 action
-split prism el interp state =
-  case matching prism state of
-    Left _ -> mempty
-    Right state' -> el (interp <<< interpret splitEff) state'
+split prism el interp =
+  either (const mempty) (el (interp <<< interpret splitEff)) <<< matching prism
   where
     splitEff :: ∀ next. EffF state2 action next -> EffF state1 action next
     splitEff (Dispatch act next) = Dispatch act next
     splitEff (Modify f next) =
-      let apply st = case matching prism st of
-            Left _ -> st
-            Right st' -> review prism $ f st'
+      let apply st = either (const st) (review prism <<< f) $ matching prism st 
       in Modify apply next
     splitEff (Subscribe {onStateChange, onAction} next) =
-      let onStateChange' st = case matching prism st of
-            Left _ -> pure unit
-            Right st' -> onStateChange st'
+      let onStateChange' = either (const $ pure unit) onStateChange <<< matching prism
       in Subscribe {onStateChange: onStateChange', onAction} next
     splitEff (Unsubscribe subId next) = Unsubscribe subId next
 
@@ -286,10 +280,8 @@ focusEff lens prism = interpret focusEff'
     focusEff' :: ∀ next. EffF state1 action1 next -> EffF state2 action2 next
     focusEff' (Dispatch act next) = Dispatch (review prism act) next
     focusEff' (Modify f next) = Modify (over lens f) next
-    focusEff' (Subscribe {onStateChange, onAction} next) =
-      let onStateChange' st = onStateChange (view lens st)
-          onAction' a = case matching prism a of
-            Left _ -> pure unit
-            Right a' -> onAction a'
-      in Subscribe {onStateChange: onStateChange', onAction: onAction'} next
+    focusEff' (Subscribe sub next) =
+      let onStateChange st = sub.onStateChange (view lens st)
+          onAction = either (const $ pure unit) sub.onAction <<< matching prism
+      in Subscribe {onStateChange, onAction} next
     focusEff' (Unsubscribe subId next) = Unsubscribe subId next
