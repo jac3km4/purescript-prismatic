@@ -1,7 +1,7 @@
-module Spaz.DOM where
+module Spaz.VDOM where
 import Spaz (Element)
-import Spaz.HTML (Props, mkElement)
-
+import Spaz.HTML (mkElement)
+import Spaz.VDOM.Props (Props)
 import Unsafe.Coerce (unsafeCoerce)
 
 text :: ∀ st act. String -> Element st act

@@ -3,58 +3,75 @@ module Spaz
   , EffF(..)
   , Subscription
   , SubId(..)
-  , ComponentParams
-  , ActionHandler
+  , InternalProps
+  , Interpret
+  , PerformAction
   , Component
   , Element
   , modify
   , dispatch
   , defaultSpec
-  , zoom
-  , state
-  , stateL
+  , defaultEqSpec
+  , focus
+  , focusS
+  , match
+  , split
   , foreach
-  , foreachF
-  , foreachZ
-  , foreachZF
+  , withState
+  , withStateL
   , element
   , wired
-  , wiredEq
-  , wiredL
-  , wiredLEq
   , stateless
-  , interpretEff
+  , runEff
+  , noAction
   ) where
 import Prelude
 
 import Control.Monad.Free.Trans (FreeT, interpret, liftFreeT, runFreeT)
-import Data.Array (catMaybes, index, length, updateAt)
+import Data.Array (index, unsafeIndex, updateAt)
 import Data.Either (Either(..))
 import Data.Foldable (traverse_)
-import Data.Lens (ALens', Lens', cloneLens, lens, over, view, (^.))
+import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.Lens (Lens', Prism', lens, matching, over, prism', review, view, (^.))
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff, makeAff, nonCanceler)
 import Effect.Class (liftEffect)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Partial.Unsafe (unsafePartial)
-import React (ReactClass, ReactElement, fragmentWithKey, statelessComponent)
+import React (ReactClass, ReactElement)
 import React as React
 
-type Model st act = { root :: st, subscriptions :: Map SubId (Subscription st), subId :: SubId }
-type Root st act = { model :: Ref (Model st act), handler :: ActionHandler st act }
+type Model st act = { root :: st, subscriptions :: Map SubId (Subscription st act), subId :: SubId }
+type ModelRef st act = Ref (Model st act)
 
-type Element st act = (Eff st act Unit -> Effect Unit) -> st -> ReactElement
-type Component st act = ReactClass (ComponentParams st act)
+type Interpret st act = Eff st act Unit -> Effect Unit
+type InternalProps st act = { interp :: Interpret st act, state :: st }
+
+type Element st act = Interpret st act -> st -> ReactElement
+type Component st act = ReactClass (InternalProps st act)
+
+type Render st act = st -> Element st act
+type PerformAction st act = act -> Eff st act Unit
+type ShouldUpdate st = st -> st -> Boolean
 
 type Spec st act =
-  { displayName :: String
+  { name :: String
+  , render :: Render st act
+  , performAction :: PerformAction st act
   , componentDidMount :: Eff st act Unit
   , componentWillUnmount :: Eff st act Unit
   , componentDidUpdate :: st -> Eff st act Unit
+  , shouldComponentUpdate :: ShouldUpdate st
+  }
+
+type Subscription st act =
+  { onStateChange :: st -> Aff Unit
+  , onAction :: act -> Effect Unit
   }
 
 newtype SubId = SubId Int
@@ -62,52 +79,37 @@ newtype SubId = SubId Int
 derive newtype instance eqSubId :: Eq SubId
 derive newtype instance ordSubId :: Ord SubId
 
-type Subscription st = st -> st -> Aff Unit
-type ActionHandler st act = act -> Eff st act Unit
-type ComponentParams st act = { effect :: Eff st act Unit -> Effect Unit, state :: st }
-
 type Eff st act = FreeT (EffF st act) Aff
 
 data EffF st act next
   = Dispatch act next
   | Modify (st -> st) next
-  | Subscribe (Subscription st) (SubId -> next)
+  | Subscribe (Subscription st act) (SubId -> next)
   | Unsubscribe SubId next
 
 derive instance functorEffectF :: Functor (EffF st act)
 
-zoomEffF :: ∀ st stt act next. Lens' st stt -> EffF stt act next -> EffF st act next
-zoomEffF lns (Dispatch act next) = Dispatch act next
-zoomEffF lns (Modify f next) = Modify (over lns f) next
-zoomEffF lns (Subscribe f next) = Subscribe (\a b -> f (view lns a) (view lns b)) next
-zoomEffF lns (Unsubscribe subId next) = Unsubscribe subId next
-
-zoomEff :: ∀ st stt act a. Lens' st stt -> Eff stt act a -> Eff st act a
-zoomEff lns = interpret (zoomEffF lns)
-
-interpretEff :: ∀ st act a. Root st act -> Eff st act a -> Aff a
-interpretEff {model, handler} m = runFreeT eval m
+runEff :: ∀ st act a. ModelRef st act -> Eff st act a -> Aff a
+runEff model = runFreeT eval
   where
     eval :: EffF st act (Eff st act a) -> Aff (Eff st act a) 
-    eval (Dispatch act next) = pure $ handler act *> next
+    eval (Dispatch act next) = liftEffect $ do
+      {subscriptions} <- Ref.read model
+      next <$ traverse_ (\fn -> fn.onAction act) subscriptions
     eval (Modify f next) = do
-      {root, subscriptions, subId} <- liftEffect $ Ref.read model
-      let root' = f root
-      liftEffect $ Ref.write {root: root', subscriptions, subId} model
-      traverse_ (\fn -> fn root root') subscriptions
-      pure next
+      {root, subscriptions} <- liftEffect $ Ref.modify (\st -> st {root = f st.root}) model
+      next <$ traverse_ (\fn -> fn.onStateChange root) subscriptions
     eval (Subscribe sub next) = liftEffect $ do
-      let update = \{root, subscriptions, subId} ->
-        let subId' = nextSubId subId
-            subscriptions' = Map.insert subId' sub subscriptions
+      let update {root, subscriptions, subId} =
+            let subId' = nextSubId subId
+                subscriptions' = Map.insert subId' sub subscriptions
             in {root, subscriptions: subscriptions', subId: subId'}
       {subId} <- Ref.modify update model
       pure (next subId)
     eval (Unsubscribe toDelete next) = liftEffect $ do
-      let update = \{root, subscriptions, subId} ->
-          {root, subscriptions: Map.delete toDelete subscriptions, subId}
-      Ref.modify_ update model
-      pure next
+      let update {root, subscriptions, subId} =
+            {root, subscriptions: Map.delete toDelete subscriptions, subId}
+      next <$ Ref.modify_ update model
     nextSubId (SubId v) = SubId $ v + 1
 
 -- | Modify a part of the state and notify all the listeners.
@@ -119,183 +121,175 @@ dispatch :: ∀ st act. act -> Eff st act Unit
 dispatch act = liftFreeT $ Dispatch act unit
 
 -- | Create a subscription for a part of the state.
-subscribe :: ∀ st act. Subscription st -> Eff st act SubId
+subscribe :: ∀ st act. Subscription st act -> Eff st act SubId
 subscribe sub = liftFreeT $ Subscribe sub identity
 
 -- | Remove a subscription by subscription ID.
 unsubscribe :: ∀ st act. SubId -> Eff st act Unit
 unsubscribe subId = liftFreeT $ Unsubscribe subId unit
 
-defaultSpec :: ∀ st act. Spec st act
-defaultSpec =
-  { displayName: ""
+-- | Modify `Element` substate specified by a `Lens`.
+modifyL :: ∀ st stt act. Lens' st stt -> (stt -> stt) -> Eff st act Unit
+modifyL lns = modify <<< over lns
+
+noAction :: ∀ st act. PerformAction st act
+noAction = const $ pure unit
+
+defaultSpec :: ∀ st act. Render st act -> PerformAction st act -> Spec st act
+defaultSpec render performAction =
+  { name: ""
+  , render
+  , performAction
   , componentDidMount: pure unit
   , componentWillUnmount: pure unit
-  , componentDidUpdate: \_ -> pure unit
+  , componentDidUpdate: const $ pure unit
+  , shouldComponentUpdate: \_ _ -> true
   }
 
--- | Create a `Component` from a `Spec`, a `shouldComponentUpdate` function and an `Element`.
--- | This function subscribes the component to all state updates.
+defaultEqSpec :: ∀ st act. (Eq st) => Render st act -> PerformAction st act -> Spec st act
+defaultEqSpec render performAction = spec { shouldComponentUpdate = (/=) }
+  where spec = defaultSpec render performAction
+
+-- | Create a `Component` from a `Spec`.
+-- | This function subscribes the component to actions and all state updates.
 -- | Each update will trigger an equality check and possibly a rerender.
 -- | You should avoid nesting those components because each of them has a separate subscription.
-wiredL
-  :: ∀ st stt act
-   . Lens' st stt               -- | Lens for the part of state to use
-  -> Spec st act                -- | Component spec
-  -> (stt -> stt -> Boolean)    -- | Comparison function used to determine changes
-  -> (stt -> Element st act)    -- | Element to be rendered
-  -> Component st act
-wiredL lens spec shouldUpdate el = React.component spec.displayName constructor
+wired :: ∀ st act. Spec st act -> Component st act
+wired spec = React.component spec.name constructor
   where
     constructor this = do
-      unsubscribeRef <- newSubscriptionRef
+      subscriptionRef <- Ref.new $ pure unit
       initial <- React.getProps this
       let initialState = initial.state
       pure $
         { render: do
-            {effect} <- React.getProps this
+            {interp} <- React.getProps this
             {state} <- React.getState this
-            pure $ el (view lens state) effect state
+            pure $ spec.render state interp state
         , state: {state: initialState}
         , componentDidMount: do
-            {effect} <- React.getProps this
-            effect $ setupSubscription unsubscribeRef this *> spec.componentDidMount
+            {interp} <- React.getProps this
+            interp $ createSubscription this subscriptionRef (interp <$> spec.performAction) *> spec.componentDidMount
         , shouldComponentUpdate: \_ {state} -> do
             current <- React.getState this
-            pure $ shouldUpdate (view lens current.state) (view lens state)
-        , componentDidUpdate: \{effect, state} _ _ ->
-            effect $ spec.componentDidUpdate state
+            pure $ spec.shouldComponentUpdate current.state state
+        , componentDidUpdate: \{interp, state} _ _ ->
+            interp $ spec.componentDidUpdate state
         , componentWillUnmount: do
-            {effect} <- React.getProps this
-            unsub <- Ref.read unsubscribeRef
-            effect $ unsub *> spec.componentWillUnmount
+            {interp} <- React.getProps this
+            unsub <- Ref.read subscriptionRef
+            interp $ unsub *> spec.componentWillUnmount
         }
-    newSubscriptionRef = Ref.new $ pure unit
-    setupSubscription ref this = do
-      subId <- subscribe $ \o n ->
-        if shouldUpdate (view lens o) (view lens n)
-        then void $ makeAff \cb -> do
-          void $ React.writeStateWithCallback this {state: n} (cb $ Right n)
-          pure nonCanceler
-        else pure unit
+    createSubscription this ref onAction = do
+      subId <- subscribe {onStateChange: performUpdate this, onAction }
       liftEffect $ Ref.write (unsubscribe subId) ref
+    performUpdate this state = do
+      old <- liftEffect $ React.getState this
+      if spec.shouldComponentUpdate old.state state
+        then void $ makeAff \cb ->
+          nonCanceler <$ React.writeStateWithCallback this {state: state} (cb $ Right state)
+        else pure unit
 
--- | Create a `Component` from a `Spec` and an `Element`.
--- | This function subscribes the component to all state updates.
--- | It's the same as `wiredL`, but defaults to the identity lens.
-wired
-  :: ∀ st act
-   . Spec st act               -- | Component spec
-  -> (st -> st -> Boolean)     -- | Comparison function used to determine changes
-  -> (st -> Element st act)    -- | Element to be rendered
-  -> Component st act
-wired spec shouldUpdate el = wiredL identity spec shouldUpdate el
-
--- | Create a `Component` from a `Spec` and an `Element`.
--- | This function subscribes the component to all state updates.
--- | It's the same as `wiredL`, but depends on an `Eq` instance to do equality checks.
-wiredLEq
-  :: ∀ st stt act
-   . (Eq stt)
-  => Lens' st stt               -- | Lens for the part of state to use  
-  -> Spec st act                -- | Component spec
-  -> (stt -> Element st act)     -- | Element to be rendered
-  -> Component st act
-wiredLEq lens spec el = wiredL lens spec (/=) el
-
--- | Create a `Component` from a `Spec` and an `Element`.
--- | This function subscribes the component to all state updates.
--- | It's the same as `wiredL`, but defaults to the identity lens and depends on an `Eq` instance to do equality checks.
-wiredEq
-  :: ∀ st act
-   . (Eq st)
-  => Spec st act                -- | Component spec
-  -> (st -> Element st act)     -- | Element to be rendered
-  -> Component st act
-wiredEq spec el = wiredL identity spec (/=) el
-
--- | Shortcut for creating React stateless components that accept any state passed to it as props.
+-- | Shortcut for creating React stateless components.
 stateless :: ∀ st act. Element st act -> Component st act
-stateless render = statelessComponent $ \{effect, state} -> render effect state
+stateless render = React.statelessComponent $ \{interp, state} -> render interp state
 
 -- | Create a `Element` from a `Component`.
 element :: ∀ st act. Component st act -> Element st act
-element class_ effect state = React.createLeafElement class_ {effect, state}
+element class_ interp state = React.createLeafElement class_ {interp, state}
+
+-- | Reify the current `Element` state.
+withState :: ∀ st act. (st -> Element st act) -> Element st act
+withState f interp st = (f st) interp st
+
+-- | Reify `Element` substate specified by a lens.
+withStateL :: ∀ st stt act. Lens' st stt -> (stt -> Element st act) -> Element st act
+withStateL lns f interp st = (f (st ^. lns)) interp st
 
 -- | Embed a `Element` with a state of type `stt` into a `Element`
 -- | with a state of type `st`.
-zoom
-  :: ∀ st stt act. ALens' st stt
-  -> Element stt act
-  -> Element st act
-zoom lns cmp effect st = cmp (\e -> effect $ zoomEff (cloneLens lns) e) (st ^. cloneLens lns)
+focus
+  :: ∀ state1 state2 action1 action2
+   . Lens' state2 state1
+  -> Prism' action2 action1
+  -> Element state1 action1
+  -> Element state2 action2
+focus lens prism el interp state = el (interp <<< focusEff lens prism) (state ^. lens)
 
--- | Reify the current `Element` state.
-state :: ∀ st act. (st -> Element st act) -> Element st act
-state f effect st = (f st) effect st
+-- | A variant of `focus` which only changes the state type, by applying a `Lens`.
+focusS
+  :: ∀ state1 state2 action
+   . Lens' state2 state1
+  -> Element state1 action
+  -> Element state2 action
+focusS lens = focus lens identity
 
--- | Reify `Element` substate specified by a lens.
-stateL
-  :: ∀ st stt act
-   . ALens' st stt
-  -> (stt -> Element st act)
-  -> Element st act
-stateL lns f effect st = (f (st ^. cloneLens lns)) effect st
+-- | A variant of `focus` which only changes the action type, by applying a `Prism`,
+-- | effectively matching some subset of a larger action type.
+match
+  :: ∀ state action1 action2
+   . Prism' action2 action1
+  -> Element state action1
+  -> Element state action2
+match prism = focus identity prism
 
--- | Modify `Element` substate specified by a `Lens`.
-modifyL
-  :: ∀ st stt act
-   . ALens' st stt
-  -> (stt -> stt)
-  -> Eff st act Unit
-modifyL lns f = modify (over (cloneLens lns) f)
-
-lensAtA :: ∀ a. Int -> Lens' (Array a) a
-lensAtA i = lens (\m -> unsafePartial $ fromJust $ index m i) (\m v -> fromMaybe m $ updateAt i v m)
-
-lensAtM :: ∀ k v. Ord k => k -> Lens' (Map k v) v
-lensAtM k = lens (\m -> unsafePartial $ fromJust $ Map.lookup k m) (\m v -> Map.insert k v m)
-
-foreign import mapI :: ∀ a. Int -> (Int -> a) -> Array a
-
--- | Unfiltered `Array` traversal.
-foreach
-  :: ∀ st act a
-   . ALens' st (Array a)
-  -> (ALens' st a -> Element st act)
-  -> Element st act
-foreach = foreachF (const true)
-
--- | Filtered `Array` traversal.
-foreachF
-  :: ∀ st act a
-   . (a -> Boolean)
-  -> ALens' st (Array a)
-  -> (ALens' st a -> Element st act)
-  -> Element st act
-foreachF f lns' cmp effect st =
-  fragmentWithKey "" $ catMaybes $
-    mapI (length st') \i -> case index st' i >>= pure <<< f of
-      Just true  -> Just $ cmp (lns <<< lensAtA i) effect st
-      Just false -> Nothing
-      Nothing    -> Nothing
+-- | Create an element which renders an optional subelement.
+split
+  :: forall state1 state2 action
+   . Prism' state1 state2
+  -> Element state2 action
+  -> Element state1 action
+split prism el interp state =
+  case matching prism state of
+    Left _ -> mempty
+    Right state' -> el (interp <<< interpret splitEff) state'
   where
-    lns = cloneLens lns'
-    st' = st ^. lns
+    splitEff :: ∀ next. EffF state2 action next -> EffF state1 action next
+    splitEff (Dispatch act next) = Dispatch act next
+    splitEff (Modify f next) =
+      let apply st = case matching prism st of
+            Left _ -> st
+            Right st' -> review prism $ f st'
+      in Modify apply next
+    splitEff (Subscribe {onStateChange, onAction} next) =
+      let onStateChange' st = case matching prism st of
+            Left _ -> pure unit
+            Right st' -> onStateChange st'
+      in Subscribe {onStateChange: onStateChange', onAction} next
+    splitEff (Unsubscribe subId next) = Unsubscribe subId next
 
--- | Zooming unfiltered `Array` traversal.
-foreachZ
-  :: ∀ st act a
-   . ALens' st (Array a)
-  -> Element a act
-  -> Element st act
-foreachZ = foreachZF (const true)
+-- | Create a component whose state is described by a list, displaying one subcomponent
+-- | for each entry in the list.
+-- |
+-- | The action type is modified to take the index of the originating subcomponent as an
+-- | additional argument.
+foreach
+  :: ∀ state action
+   . (Int -> Element state action)
+  -> Element (Array state) (Tuple Int action)
+foreach f interp state = foldMapWithIndex folder state
+  where
+    folder i a = f i (interp <<< focusEff (lensAtA i) (matcherA i)) (unsafePartial $ unsafeIndex state i)
+    matcherA :: ∀ a. Int -> Prism' (Tuple Int a) a
+    matcherA i = prism' (\v -> Tuple i v) (\(Tuple i' v) -> if i' == i then Just v else Nothing)
+    lensAtA :: ∀ a. Int -> Lens' (Array a) a
+    lensAtA i = lens (\m -> unsafePartial $ fromJust $ index m i) (\m v -> fromMaybe m $ updateAt i v m)
 
--- | Zooming filtered `Array` traversal.
-foreachZF
-  :: ∀ st act a
-   . (a -> Boolean)
-  -> ALens' st (Array a)
-  -> Element a act
-  -> Element st act
-foreachZF f lns cmp = foreachF f lns \lns' -> zoom lns' cmp
+focusEff
+  :: ∀ state1 state2 action1 action2 a
+   . Lens' state2 state1
+  -> Prism' action2 action1
+  -> Eff state1 action1 a
+  -> Eff state2 action2 a
+focusEff lens prism = interpret focusEff' 
+  where
+    focusEff' :: ∀ next. EffF state1 action1 next -> EffF state2 action2 next
+    focusEff' (Dispatch act next) = Dispatch (review prism act) next
+    focusEff' (Modify f next) = Modify (over lens f) next
+    focusEff' (Subscribe {onStateChange, onAction} next) =
+      let onStateChange' st = onStateChange (view lens st)
+          onAction' a = case matching prism a of
+            Left _ -> pure unit
+            Right a' -> onAction a'
+      in Subscribe {onStateChange: onStateChange', onAction: onAction'} next
+    focusEff' (Unsubscribe subId next) = Unsubscribe subId next

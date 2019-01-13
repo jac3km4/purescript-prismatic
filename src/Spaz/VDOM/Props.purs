@@ -1,11 +1,10 @@
-module Spaz.Props where
-
-import Spaz (Eff)
-import Spaz.HTML(Props)
+module Spaz.VDOM.Props where
 import Prelude
 import React.DOM.Props as P
-import React.SyntheticEvent (SyntheticAnimationEvent, SyntheticClipboardEvent, SyntheticEvent, SyntheticFocusEvent, SyntheticInputEvent, SyntheticKeyboardEvent, SyntheticMouseEvent, SyntheticTouchEvent, SyntheticTransitionEvent, SyntheticUIEvent, SyntheticWheelEvent, keyCode)
-import Unsafe.Coerce (unsafeCoerce)
+import React.SyntheticEvent as Event
+import Spaz (Eff, Interpret)
+
+type Props st act = Interpret st act -> P.Props
 
 aria :: ∀ ariaAttrs st act. { | ariaAttrs } -> Props st act
 aria v _ = P.aria v
@@ -456,163 +455,163 @@ unselectable v _ = P.unselectable v
 --------------------------------------------------------------------------------
 
 onAnimationStart :: ∀ st act.
-  (SyntheticAnimationEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticAnimationEvent -> Eff st act Unit) -> Props st act
 onAnimationStart f effect = P.onAnimationStart (effect <<< f)
 
 onAnimationEnd :: ∀ st act.
-  (SyntheticAnimationEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticAnimationEvent -> Eff st act Unit) -> Props st act
 onAnimationEnd f effect = P.onAnimationEnd (effect <<< f)
 
 onAnimationIteration :: ∀ st act.
-  (SyntheticAnimationEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticAnimationEvent -> Eff st act Unit) -> Props st act
 onAnimationIteration f effect = P.onAnimationIteration (effect <<< f)
 
 onTransitionEnd :: ∀ st act.
-  (SyntheticTransitionEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticTransitionEvent -> Eff st act Unit) -> Props st act
 onTransitionEnd f effect = P.onTransitionEnd (effect <<< f)
 
 onLoad :: ∀ st act.
-  (SyntheticEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticEvent -> Eff st act Unit) -> Props st act
 onLoad f effect = P.onLoad (effect <<< f)
 
 onCopy :: ∀ st act.
-  (SyntheticClipboardEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticClipboardEvent -> Eff st act Unit) -> Props st act
 onCopy f effect = P.onCopy (effect <<< f)
 
 onCut :: ∀ st act.
-  (SyntheticClipboardEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticClipboardEvent -> Eff st act Unit) -> Props st act
 onCut f effect = P.onCut (effect <<< f)
 
 onPaste :: ∀ st act.
-  (SyntheticClipboardEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticClipboardEvent -> Eff st act Unit) -> Props st act
 onPaste f effect = P.onPaste (effect <<< f)
 
 onKeyDown :: ∀ st act.
-  (SyntheticKeyboardEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticKeyboardEvent -> Eff st act Unit) -> Props st act
 onKeyDown f effect = P.onKeyDown (effect <<< f)
 
 onKeyPress :: ∀ st act.
-  (SyntheticKeyboardEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticKeyboardEvent -> Eff st act Unit) -> Props st act
 onKeyPress f effect = P.onKeyPress (effect <<< f)
 
 onKeyUp :: ∀ st act.
-  (SyntheticKeyboardEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticKeyboardEvent -> Eff st act Unit) -> Props st act
 onKeyUp f effect = P.onKeyUp (effect <<< f)
 
 onFocus :: ∀ st act.
-  (SyntheticFocusEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticFocusEvent -> Eff st act Unit) -> Props st act
 onFocus f effect = P.onFocus (effect <<< f)
 
 onBlur :: ∀ st act.
-  (SyntheticFocusEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticFocusEvent -> Eff st act Unit) -> Props st act
 onBlur f effect = P.onBlur (effect <<< f)
 
 onChange :: ∀ st act.
-  (SyntheticInputEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticInputEvent -> Eff st act Unit) -> Props st act
 onChange f effect = P.onChange (effect <<< f)
 
 onInput :: ∀ st act.
-  (SyntheticInputEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticInputEvent -> Eff st act Unit) -> Props st act
 onInput f effect = P.onInput (effect <<< f)
 
 onInvalid :: ∀ st act.
-  (SyntheticInputEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticInputEvent -> Eff st act Unit) -> Props st act
 onInvalid f effect = P.onInvalid (effect <<< f)
 
 onSubmit :: ∀ st act.
-  (SyntheticInputEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticInputEvent -> Eff st act Unit) -> Props st act
 onSubmit f effect = P.onSubmit (effect <<< f)
 
 onClick :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onClick f effect = P.onClick (effect <<< f)
 
 onDoubleClick :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDoubleClick f effect = P.onDoubleClick (effect <<< f)
 
 onDrag :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDrag f effect = P.onDrag (effect <<< f)
 
 onDragEnd :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDragEnd f effect = P.onDragEnd (effect <<< f)
 
 onDragEnter :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDragEnter f effect = P.onDragEnter (effect <<< f)
 
 onDragExit :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDragExit f effect = P.onDragExit (effect <<< f)
 
 onDragLeave :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDragLeave f effect = P.onDragLeave (effect <<< f)
 
 onDragOver :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDragOver f effect = P.onDragOver (effect <<< f)
 
 onDragStart :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDragStart f effect = P.onDragStart (effect <<< f)
 
 onDrop :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onDrop f effect = P.onDrop (effect <<< f)
 
 onMouseDown :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onMouseDown f effect = P.onMouseDown (effect <<< f)
 
 onMouseEnter :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onMouseEnter f effect = P.onMouseEnter (effect <<< f)
 
 onMouseLeave :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onMouseLeave f effect = P.onMouseLeave (effect <<< f)
 
 onMouseMove :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onMouseMove f effect = P.onMouseMove (effect <<< f)
 
 onMouseOut :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onMouseOut f effect = P.onMouseOut (effect <<< f)
 
 onMouseOver :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onMouseOver f effect = P.onMouseOver (effect <<< f)
 
 onMouseUp :: ∀ st act.
-  (SyntheticMouseEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticMouseEvent -> Eff st act Unit) -> Props st act
 onMouseUp f effect = P.onMouseUp (effect <<< f)
 
 onTouchCancel :: ∀ st act.
-  (SyntheticTouchEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticTouchEvent -> Eff st act Unit) -> Props st act
 onTouchCancel f effect = P.onTouchCancel (effect <<< f)
 
 onTouchEnd :: ∀ st act.
-  (SyntheticTouchEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticTouchEvent -> Eff st act Unit) -> Props st act
 onTouchEnd f effect = P.onTouchEnd (effect <<< f)
 
 onTouchMove :: ∀ st act.
-  (SyntheticTouchEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticTouchEvent -> Eff st act Unit) -> Props st act
 onTouchMove f effect = P.onTouchMove (effect <<< f)
 
 onTouchStart :: ∀ st act.
-  (SyntheticTouchEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticTouchEvent -> Eff st act Unit) -> Props st act
 onTouchStart f effect = P.onTouchStart (effect <<< f)
 
 onScroll :: ∀ st act.
-  (SyntheticUIEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticUIEvent -> Eff st act Unit) -> Props st act
 onScroll f effect = P.onScroll (effect <<< f)
 
 onWheel :: ∀ st act.
-  (SyntheticWheelEvent -> Eff st act Unit) -> Props st act
+  (Event.SyntheticWheelEvent -> Eff st act Unit) -> Props st act
 onWheel f effect = P.onWheel (effect <<< f)
 
 --------------------------------------------------------------------------------
@@ -662,15 +661,12 @@ viewBox v _ = P.viewBox v
 
 --------------------------------------------------------------------------------
 
-unsafeSyntheticEventConvert :: ∀ a. SyntheticEvent -> a
-unsafeSyntheticEventConvert = unsafeCoerce
-
 onEnter :: ∀ st act. Eff st act Unit -> Props st act
 onEnter f effect = P.onKeyDown \e -> do
-  code <- keyCode e
+  code <- Event.keyCode e
   if code == 13.0 then effect f else pure unit
 
 onEscape :: ∀ st act. Eff st act Unit -> Props st act
 onEscape f effect = P.onKeyDown \e -> do
-  code <- keyCode e
+  code <- Event.keyCode e
   if code == 27.0 then effect f else pure unit
