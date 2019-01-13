@@ -1,21 +1,19 @@
 module Spaz.HTML where
-import React.DOM (IsDynamic(..), mkDOM)
-import React.DOM.Props as P
-import ReactDOM (render)
-import Web.DOM.NonElementParentNode (getElementById)
-import Web.HTML (window)
-import Web.HTML.HTMLDocument (toNonElementParentNode)
-import Web.HTML.Window (document)
-import Spaz (ActionHandler, Eff, Element, SubId(..), interpretEff)
-import Effect (Effect)
 import Data.Map as Map
 import Data.Maybe (fromJust)
+import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Effect.Ref as Ref
 import Partial.Unsafe (unsafePartial)
-import Prelude (Unit, bind, map, pure, unit, (#), ($))
-
-type Props st act = (Eff st act Unit -> Effect Unit) -> P.Props
+import Prelude (Unit, bind, join, map, pure, void, (#), ($), (<$>), (<*>), (<<<), (=<<))
+import React.DOM (IsDynamic(..), mkDOM)
+import ReactDOM as ReactDOM
+import Spaz (Element, SubId(..), runEff)
+import Spaz.VDOM.Props (Props)
+import Web.DOM.NonElementParentNode (getElementById) as Web
+import Web.HTML (window) as Web
+import Web.HTML.HTMLDocument (toNonElementParentNode) as Web
+import Web.HTML.Window (document) as Web
 
 mkElement
   :: ∀ st act
@@ -29,23 +27,16 @@ mkElement element props children effect st =
 -- | Attach `Element` to the DOM element with the specified id and mount it.
 mount
   :: ∀ st act. String     -- | Element id
-  -> Element st act     -- | Element
-  -> ActionHandler st act -- | Action handler
+  -> Element st act       -- | Element
   -> st                   -- | Initial state
   -> Effect Unit
-mount elemId cmp handler st = do
-  e <- getHandle
-  u <- spec
-  _ <- render u e
-  pure unit
+mount elemId cmp st = void $ join $ ReactDOM.render <$> spec <*> handle
   where
     spec = do
       model <- Ref.new {root: st, subscriptions: Map.empty, subId: SubId 0 }
-      let root = { model, handler }
-          eff = \effect -> launchAff_ $ interpretEff root effect
+      let eff = launchAff_ <<< runEff model
       pure $ cmp eff st
-    getHandle = do
-      win <- window
-      doc <- document win
-      e   <- getElementById elemId $ toNonElementParentNode doc
-      pure $ unsafePartial $ fromJust e
+    handle = do
+      elem <- Web.getElementById elemId =<< liftF Web.toNonElementParentNode =<< Web.document =<< Web.window
+      pure $ unsafePartial $ fromJust elem
+    liftF = map pure
