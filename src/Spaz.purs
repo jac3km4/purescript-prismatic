@@ -56,7 +56,7 @@ type Element st act = Interpret st act -> st -> ReactElement
 type Component st act = ReactClass (InternalProps st act)
 
 type Render st act = st -> Element st act
-type PerformAction st act = act -> Eff st act Unit
+type PerformAction st act = st -> act -> Eff st act Unit
 type ShouldUpdate st = st -> st -> Boolean
 
 type Spec st act =
@@ -71,7 +71,7 @@ type Spec st act =
 
 type Subscription st act =
   { onStateChange :: st -> Aff Unit
-  , onAction :: act -> Effect Unit
+  , onAction :: st -> act -> Effect Unit
   }
 
 newtype SubId = SubId Int
@@ -94,8 +94,8 @@ runEff model = runFreeT eval
   where
     eval :: EffF st act (Eff st act a) -> Aff (Eff st act a) 
     eval (Dispatch act next) = liftEffect $ do
-      {subscriptions} <- Ref.read model
-      next <$ traverse_ (\fn -> fn.onAction act) subscriptions
+      {root, subscriptions} <- Ref.read model
+      next <$ traverse_ (\fn -> fn.onAction root act) subscriptions
     eval (Modify f next) = do
       {root, subscriptions} <- liftEffect $ Ref.modify (\st -> st {root = f st.root}) model
       next <$ traverse_ (\fn -> fn.onStateChange root) subscriptions
@@ -133,7 +133,7 @@ modifyL :: ∀ st stt act. Lens' st stt -> (stt -> stt) -> Eff st act Unit
 modifyL lns = modify <<< over lns
 
 noAction :: ∀ st act. PerformAction st act
-noAction _ = pure unit
+noAction _ _ = pure unit
 
 defaultSpec :: ∀ st act. Render st act -> PerformAction st act -> Spec st act
 defaultSpec render performAction =
@@ -169,7 +169,7 @@ wired spec = React.component spec.name constructor
         , state: {state: initialState}
         , componentDidMount: do
             {interp} <- React.getProps this
-            interp $ createSubscription this subscriptionRef (interp <$> spec.performAction) *> spec.componentDidMount
+            interp $ createSubscription this subscriptionRef interp *> spec.componentDidMount
         , shouldComponentUpdate: \_ {state} -> do
             current <- React.getState this
             pure $ spec.shouldComponentUpdate current.state state
@@ -180,8 +180,9 @@ wired spec = React.component spec.name constructor
             unsub <- Ref.read subscriptionRef
             interp $ unsub *> spec.componentWillUnmount
         }
-    createSubscription this ref onAction = do
-      subId <- subscribe {onStateChange: performUpdate this, onAction }
+    createSubscription this ref interp = do
+      subId <- subscribe { onStateChange: performUpdate this,
+                           onAction: \st act -> interp $ spec.performAction st act }
       liftEffect $ Ref.write (unsubscribe subId) ref
     performUpdate this state = do
       old <- liftEffect $ React.getState this
@@ -247,9 +248,10 @@ split prism el interp =
     splitEff (Modify f next) =
       let apply st = either (const st) (review prism <<< f) $ matching prism st 
       in Modify apply next
-    splitEff (Subscribe {onStateChange, onAction} next) =
-      let onStateChange' = either (const $ pure unit) onStateChange <<< matching prism
-      in Subscribe {onStateChange: onStateChange', onAction} next
+    splitEff (Subscribe sub next) =
+      let onStateChange = either (const $ pure unit) sub.onStateChange <<< matching prism
+          onAction st act = either (const $ pure unit) (flip sub.onAction act) $ matching prism st
+      in Subscribe {onStateChange, onAction} next
     splitEff (Unsubscribe subId next) = Unsubscribe subId next
 
 -- | Create a component whose state is described by a list, displaying one subcomponent
@@ -267,7 +269,7 @@ foreach f interp state = foldMapWithIndex folder state
     matcherA :: ∀ a. Int -> Prism' (Tuple Int a) a
     matcherA i = prism' (\v -> Tuple i v) (\(Tuple i' v) -> if i' == i then Just v else Nothing)
     lensAtA :: ∀ a. Int -> Lens' (Array a) a
-    lensAtA i = lens (\m -> unsafePartial $ fromJust $ index m i) (\m v -> fromMaybe m $ updateAt i v m)
+    lensAtA i = lens (unsafePartial $ fromJust <<< flip index i) (\m v -> fromMaybe m $ updateAt i v m)
 
 focusEff
   :: ∀ state1 state2 action1 action2 a
@@ -282,6 +284,6 @@ focusEff lens prism = interpret focusEff'
     focusEff' (Modify f next) = Modify (over lens f) next
     focusEff' (Subscribe sub next) =
       let onStateChange st = sub.onStateChange (view lens st)
-          onAction = either (const $ pure unit) sub.onAction <<< matching prism
+          onAction st = either (const $ pure unit) (sub.onAction (view lens st)) <<< matching prism
       in Subscribe {onStateChange, onAction} next
     focusEff' (Unsubscribe subId next) = Unsubscribe subId next
