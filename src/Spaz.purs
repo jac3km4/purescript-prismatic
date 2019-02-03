@@ -9,6 +9,7 @@ module Spaz
   , Component
   , Element
   , modify
+  , modifyL
   , dispatch
   , defaultSpec
   , defaultEqSpec
