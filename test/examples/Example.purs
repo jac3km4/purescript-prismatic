@@ -6,10 +6,10 @@ import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Prelude (Unit, const, show, ($), (+))
-import Spaz as S
-import Spaz.HTML (mount)
-import Spaz.VDOM (button, div, div', text)
-import Spaz.VDOM.Props (onClick)
+import Prismatic as S
+import Prismatic.HTML (mount)
+import Prismatic.VDOM (button, div, div', text)
+import Prismatic.VDOM.Props (onClick)
 
 type State = { number :: Int }
 
@@ -30,7 +30,7 @@ stuff = S.wired $ S.defaultEqSpec render performAction
       div' [ button [ onClick $ \_ -> liftEffect (log "clicked") *> S.modify \s -> s + 1] [ text "lel" ]
            , div [onClick $ \_ -> S.dispatch ResetCounter] [text $ show st]
            ]
-    performAction ResetCounter = S.modify $ const 0
+    performAction _ ResetCounter = S.modify $ const 0
 
 main :: Effect Unit
 main = mount "main" page {number:0}

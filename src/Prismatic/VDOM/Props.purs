@@ -1,8 +1,8 @@
-module Spaz.VDOM.Props where
+module Prismatic.VDOM.Props where
 import Prelude
 import React.DOM.Props as P
 import React.SyntheticEvent as Event
-import Spaz (Eff, Interpret)
+import Prismatic (Eff, Interpret)
 
 type Props st act = Interpret st act -> P.Props
 
