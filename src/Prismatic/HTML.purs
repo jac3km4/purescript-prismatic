@@ -1,4 +1,4 @@
-module Spaz.HTML where
+module Prismatic.HTML where
 import Data.Map as Map
 import Data.Maybe (fromJust)
 import Effect (Effect)
@@ -8,8 +8,8 @@ import Partial.Unsafe (unsafePartial)
 import Prelude (Unit, bind, join, map, pure, void, (#), ($), (<$>), (<*>), (<<<), (=<<))
 import React.DOM (IsDynamic(..), mkDOM)
 import ReactDOM as ReactDOM
-import Spaz (Element, SubId(..), runEff)
-import Spaz.VDOM.Props (Props)
+import Prismatic (Element, SubId(..), runEff)
+import Prismatic.VDOM.Props (Props)
 import Web.DOM.NonElementParentNode (getElementById) as Web
 import Web.HTML (window) as Web
 import Web.HTML.HTMLDocument (toNonElementParentNode) as Web

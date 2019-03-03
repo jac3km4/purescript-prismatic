@@ -1,4 +1,4 @@
-module Spaz
+module Prismatic
   ( Eff
   , EffF(..)
   , Subscription
