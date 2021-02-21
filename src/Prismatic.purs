@@ -64,7 +64,7 @@ type Spec st act =
   { name :: String
   , render :: Render st act
   , performAction :: PerformAction st act
-  , componentDidMount :: Eff st act Unit
+  , componentDidMount :: Interpret st act -> Eff st act Unit
   , componentWillUnmount :: Eff st act Unit
   , componentDidUpdate :: st -> Eff st act Unit
   , shouldComponentUpdate :: ShouldUpdate st
@@ -141,7 +141,7 @@ defaultSpec render performAction =
   { name: ""
   , render
   , performAction
-  , componentDidMount: pure unit
+  , componentDidMount: \_ -> pure unit
   , componentWillUnmount: pure unit
   , componentDidUpdate: const $ pure unit
   , shouldComponentUpdate: \_ _ -> true
@@ -170,7 +170,7 @@ wired spec = React.component spec.name constructor
         , state: {state: initialState}
         , componentDidMount: do
             {interp} <- React.getProps this
-            interp $ createSubscription this subscriptionRef interp *> spec.componentDidMount
+            interp $ createSubscription this subscriptionRef interp *> spec.componentDidMount interp
         , shouldComponentUpdate: \_ {state} -> do
             current <- React.getState this
             pure $ spec.shouldComponentUpdate current.state state
